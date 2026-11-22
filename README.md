@@ -80,4 +80,4 @@ On Linux with Steam + Proton, Trackmania runs inside a `SteamLinuxRuntime` (`pre
 
 ## License
 
-MIT
+Apache-2.0
