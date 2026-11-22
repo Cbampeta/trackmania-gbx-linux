@@ -22,7 +22,7 @@ Open Trackmania (2020) `.Map.Gbx` / `.Gbx` files directly on Linux (Steam + Prot
 ## Installation
 
 ```bash
-git clone https://github.com/<your-username>/trackmania-gbx-linux.git
+git clone https://github.com/Cbampeta/trackmania-gbx-linux.git
 cd trackmania-gbx-linux
 chmod +x install.sh uninstall.sh
 ./install.sh
