@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Trackmania (Open .Gbx)
+Name[fr]=Trackmania (Ouvrir .Gbx)
+Comment=Open a .Gbx map or replay file in Trackmania (Steam/Proton)
+Comment[fr]=Ouvrir une map ou un replay .Gbx dans Trackmania (Steam/Proton)
+Exec=@EXEC_PATH@ %f
+Icon=steam_icon_@APPID@
+Terminal=false
+Type=Application
+Categories=Game;
+MimeType=application/x-trackmania-gbx;
+NoDisplay=false

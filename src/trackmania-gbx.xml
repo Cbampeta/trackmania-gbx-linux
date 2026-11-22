@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-trackmania-gbx">
+    <comment>Trackmania GameBox file (.Gbx)</comment>
+    <comment xml:lang="fr">Fichier Trackmania GameBox (.Gbx)</comment>
+    <glob pattern="*.gbx"/>
+    <glob pattern="*.Gbx"/>
+    <glob pattern="*.GBX"/>
+    <glob pattern="*.Map.Gbx" weight="60"/>
+    <glob pattern="*.map.gbx" weight="60"/>
+    <glob pattern="*.Replay.Gbx" weight="60"/>
+    <glob pattern="*.replay.gbx" weight="60"/>
+    <glob pattern="*.Challenge.Gbx" weight="60"/>
+    <glob pattern="*.challenge.gbx" weight="60"/>
+  </mime-type>
+</mime-info>

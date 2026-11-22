@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/trackmania-gbx-linux/config"
+LOG_FILE="${TMPDIR:-/tmp}/trackmania-open-gbx.log"
+
+# Defaults (overridden by config file)
+APPID="2225070"
+STEAM_CMD="steam"
+GAME_DIR=""
+COMPAT_DATA=""
+PROTON_WINE=""
+
+if [[ -f "$CONFIG_FILE" ]]; then
+    # shellcheck source=/dev/null
+    source "$CONFIG_FILE"
+fi
+
+notify() {
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send -i "steam_icon_${APPID}" "Trackmania" "$1" 2>/dev/null || true
+    fi
+}
+
+run_steam() {
+    # Supports both "steam" and multi-word commands like "flatpak run com.valvesoftware.Steam"
+    read -r -a steam_argv <<< "$STEAM_CMD"
+    "${steam_argv[@]}" "$@"
+}
+
+if [[ $# -lt 1 || -z "${1:-}" ]]; then
+    run_steam "steam://rungameid/$APPID" >> "$LOG_FILE" 2>&1 &
+    exit 0
+fi
+
+RAW_INPUT="$1"
+
+# Handle file:// URIs if passed by a file manager or browser
+if [[ "$RAW_INPUT" == file://* ]]; then
+    FILE_PATH="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.unquote(sys.argv[1][7:]))' "$RAW_INPUT")"
+else
+    FILE_PATH="$RAW_INPUT"
+fi
+
+if [[ ! -f "$FILE_PATH" ]]; then
+    notify "File not found: $FILE_PATH"
+    echo "[$(date -Is)] ERROR: file not found: $FILE_PATH" >> "$LOG_FILE"
+    exit 1
+fi
+
+ABS_PATH="$(realpath "$FILE_PATH")"
+WIN_PATH="Z:${ABS_PATH//\//\\}"
+BASENAME="$(basename "$ABS_PATH")"
+
+echo "[$(date -Is)] Opening: $ABS_PATH -> /file=$WIN_PATH" >> "$LOG_FILE"
+
+# Match the actual Windows Trackmania.exe process (backslash path), ignoring Steam Linux wrapper processes
+TM_PID="$(pgrep -f 'Trackmania\\Trackmania\.exe' | head -n 1 || true)"
+
+if [[ -n "$TM_PID" ]]; then
+    # Find the wineserver sharing the same pv-adverb parent (fallback to TM_PID)
+    TM_PPID="$(awk '{print $4}' "/proc/$TM_PID/stat" 2>/dev/null || true)"
+    ENV_PID="$TM_PID"
+    ACTIVE_WINE="$PROTON_WINE"
+
+    if [[ -n "$TM_PPID" ]]; then
+        WS_PID="$(pgrep -P "$TM_PPID" -x wineserver | head -n 1 || true)"
+        if [[ -n "$WS_PID" ]]; then
+            ENV_PID="$WS_PID"
+            WS_EXE="$(readlink -f "/proc/$WS_PID/exe" 2>/dev/null || true)"
+            if [[ -n "$WS_EXE" ]]; then
+                WS_DIR="$(dirname "$WS_EXE")"
+                if [[ -x "$WS_DIR/wine" ]]; then
+                    ACTIVE_WINE="$WS_DIR/wine"
+                elif [[ -x "$WS_DIR/wine64" ]]; then
+                    ACTIVE_WINE="$WS_DIR/wine64"
+                fi
+            fi
+        fi
+    fi
+
+    if [[ -z "$ACTIVE_WINE" || ! -x "$ACTIVE_WINE" ]]; then
+        notify "Proton wine binary not found. Re-run install.sh."
+        echo "[$(date -Is)] ERROR: wine binary not found: $ACTIVE_WINE" >> "$LOG_FILE"
+        exit 1
+    fi
+
+    if [[ -n "$GAME_DIR" && -f "$GAME_DIR/Trackmania.exe" ]]; then
+        WIN_EXE="Z:${GAME_DIR//\//\\}\\Trackmania.exe"
+        RUN_CWD="$GAME_DIR"
+    else
+        WIN_EXE="S:\\steamapps\\common\\Trackmania\\Trackmania.exe"
+        RUN_CWD="$HOME"
+    fi
+
+    notify "Opening $BASENAME in Trackmania..."
+    echo "[$(date -Is)] Injecting into active container (TM_PID=$TM_PID, ENV_PID=$ENV_PID, WINE=$ACTIVE_WINE)" >> "$LOG_FILE"
+
+    # Enter the active pressure-vessel user+mount namespace if it differs from ours
+    SELF_MNT_NS="$(readlink /proc/self/ns/mnt 2>/dev/null || true)"
+    TM_MNT_NS="$(readlink "/proc/$TM_PID/ns/mnt" 2>/dev/null || true)"
+
+    PY_HELPER='
+import os, subprocess, sys
+env_pid, wine_bin, win_exe, game_dir, win_arg = sys.argv[1:6]
+raw = open(f"/proc/{env_pid}/environ", "rb").read().split(b"\0")
+env = {}
+for item in raw:
+    if b"=" in item:
+        k, v = item.split(b"=", 1)
+        env[k.decode("utf-8", "surrogateescape")] = v.decode("utf-8", "surrogateescape")
+env.pop("LD_PRELOAD", None)
+r = subprocess.run([wine_bin, win_exe, win_arg], cwd=game_dir, env=env)
+sys.exit(r.returncode)
+'
+
+    if [[ -n "$TM_MNT_NS" && "$SELF_MNT_NS" != "$TM_MNT_NS" ]] && command -v nsenter >/dev/null 2>&1; then
+        nsenter -t "$TM_PID" -U -m --preserve-credentials -- /usr/bin/python3 -c "$PY_HELPER" \
+            "$ENV_PID" "$ACTIVE_WINE" "$WIN_EXE" "$RUN_CWD" "/file=$WIN_PATH" >> "$LOG_FILE" 2>&1 &
+    else
+        python3 -c "$PY_HELPER" \
+            "$ENV_PID" "$ACTIVE_WINE" "$WIN_EXE" "$RUN_CWD" "/file=$WIN_PATH" >> "$LOG_FILE" 2>&1 &
+    fi
+else
+    notify "Launching Trackmania with $BASENAME..."
+    run_steam -applaunch "$APPID" "/file=$WIN_PATH" >> "$LOG_FILE" 2>&1 &
+fi
